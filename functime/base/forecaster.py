@@ -110,7 +110,7 @@ class Forecaster(Model):
     def __init__(
         self,
         freq: str | None,
-        lags: int,
+        lags: int | None,
         max_horizons: int | None = None,
         strategy: FORECAST_STRATEGIES = None,
         target_transform: Transformer | list[Transformer] | None = None,

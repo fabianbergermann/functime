@@ -82,7 +82,7 @@ def fit_direct(
 
 def fit_autoreg(
     regress: Callable[[pl.LazyFrame, pl.LazyFrame], Any],
-    lags: int,
+    lags: int | None,
     y: pl.DataFrame | pl.LazyFrame,
     X: pl.DataFrame | pl.LazyFrame | None = None,
     max_horizons: int | None = None,
