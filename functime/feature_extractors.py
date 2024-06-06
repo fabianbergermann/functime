@@ -201,7 +201,7 @@ def augmented_dickey_fuller(x: TIME_SERIES_T, n_lags: int) -> float:
             ),
             pl.lit(1),
         )  # was a frame
-        y = data_x.drop_in_place("0").to_numpy(zero_copy_only=True)
+        y = data_x.drop_in_place("0").to_numpy(allow_copy=False)
         data_x = data_x.to_numpy()  # to NumPy matrix
 
         coeffs, resids, _, _ = lstsq(data_x, y, cond=None)
@@ -279,7 +279,7 @@ def autoregressive_coefficients(x: TIME_SERIES_T, n_lags: int) -> list[float]:
             )
             .to_numpy()
         )
-        y_ = y.tail(length).to_numpy(zero_copy_only=True).reshape((-1, 1))
+        y_ = y.tail(length).to_numpy(allow_copy=False).reshape((-1, 1))
         out: np.ndarray = rs_faer_lstsq1(data_x, y_)
         return out.ravel()
     else:
@@ -597,9 +597,9 @@ def cwt_coefficients(
     """
     if isinstance(x, pl.Series):
         convolution = cwt(
-            data=x.to_numpy(allow_copy=True), scales=widths, wavelet="mexh", axis=-1
+            data=x.to_numpy(allow_copy=False), scales=widths, wavelet="mexh", axis=-1
         )[0]
-        coeffs: List[float] = []
+        coeffs: list[float] = []
         for coeff_idx in range(min(n_coefficients, convolution.shape[1])):
             coeffs.extend(
                 [float(convolution[widths.index(w), coeff_idx]) for w in widths]
@@ -748,8 +748,8 @@ def friedrich_coefficients(
         # This is a Vandermonde matrix. May have shortcuts in our use case, as again length >> degree.
         # Not sure if NumPy is taking advantage of this though.
         return np.polyfit(
-            x_means.get_column("signal").to_numpy(zero_copy_only=True),
-            x_means.get_column("delta").to_numpy(zero_copy_only=True),
+            x_means.get_column("signal").to_numpy(allow_copy=False),
+            x_means.get_column("delta").to_numpy(allow_copy=False),
             deg=polynomial_order,
         )
     else:
@@ -1199,7 +1199,7 @@ def number_cwt_peaks(x: TIME_SERIES_T, max_width: int = 5) -> float:
             # But it is deprecated and will be removed in SciPy 1.15.
             # What would be the default then?
             find_peaks_cwt(
-                vector=x.to_numpy(zero_copy_only=True),
+                vector=x.to_numpy(allow_copy=False),
                 widths=np.array(list(range(1, max_width + 1))),
             )
         )
@@ -1916,7 +1916,7 @@ def fft_coefficients(x: TIME_SERIES_T) -> MAP_LIST_EXPR:
     dict of list of floats | Expr
     """
 
-    fft = np.fft.rfft(x.to_numpy(zero_copy_only=True))
+    fft = np.fft.rfft(x.to_numpy(allow_copy=False))
     real = fft.real
     imag = fft.imag
     angle = np.arctan2(real, imag)
