@@ -13,7 +13,7 @@ def X_to_numpy(X: pl.DataFrame) -> np.ndarray:
     X_arr = (
         X.lazy()
         .drop(pl.nth([0, 1]))
-        .select(pl.all().cast(pl.Float32))
+        .select(pl.all().cast(pl.Float64))
         .select(
             pl.when(pl.all().is_infinite() | pl.all().is_nan())
             .then(None)
@@ -31,7 +31,7 @@ def X_to_numpy(X: pl.DataFrame) -> np.ndarray:
 def y_to_numpy(y: pl.DataFrame) -> np.ndarray:
     y_arr = (
         y.lazy()
-        .select(pl.col(y.columns[-1]).cast(pl.Float32))
+        .select(pl.col(y.columns[-1]).cast(pl.Float64))
         .select(
             pl.when(pl.all().is_infinite() | pl.all().is_nan())
             .then(None)
