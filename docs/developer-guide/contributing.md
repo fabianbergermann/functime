@@ -50,19 +50,19 @@ git clone git@github.com:functime-org/functime
 
 3. **Install Rust**. This is easily done with [`rustup`](https://rustup.rs/). Use the latest stable version.
 
-3. **Install Python**. Since `functime` depends on some packages from Python's scientific ecosystem, we respect **numpy's minimum supported version** (see [here](https://numpy.org/neps/nep-0029-deprecation_policy.html#support-table)). Though you can download Python from the [official page](https://www.python.org/downloads/), **we recommend you use [`rye`](https://rye-up.com/) to manage your Python versions and install the project dependencies**. This will make the next installation step easier. You can also use [`pdm`](https://pdm-project.org/en/latest/) or [`hatch`](https://hatch.pypa.io/1.9/). `poetry` will not work, as it does not comply with with PEP517 and PEP518.
+3. **Install Python**. Since `functime` depends on some packages from Python's scientific ecosystem, we respect **numpy's minimum supported version** (see [here](https://numpy.org/neps/nep-0029-deprecation_policy.html#support-table)). Though you can download Python from the [official page](https://www.python.org/downloads/), **we recommend you use [`uv`](https://docs.astral.sh/uv/) to manage your Python versions and install the project dependencies**. This will make the next installation step easier. You can also use [`pdm`](https://pdm-project.org/en/latest/) or [`hatch`](https://hatch.pypa.io/1.9/). `poetry` will not work, as it does not comply with with PEP517 and PEP518.
 
-4. **Install the project's dependencies**. If you use `rye`, run the following:
+4. **Install the project's dependencies**. If you use [`uv`](https://docs.astral.sh/uv/), run the following:
 
 ```bash
-# with rye
-rye sync --features=dev
+# with uv
+uv sync
 ```
 
 5. Install pre-commit hooks:
 
 ```bash
-rye run pre-commit install --install-hooks
+uv run pre-commit install --install-hooks
 ```
 
 ### While working on your issue
@@ -72,14 +72,14 @@ Create a new git branch from the `main` branch in your local repository, and sta
 The Rust code is located in the `src` directory, while the Python codebase is located under `functime`. To run the tests, use the following:
 
 ```bash
-rye test
+uv run pytest
 ```
 
-`pre-commit` checks will run before any commit. To format the code, use the following:
+\`pre-commit\` checks will run before any commit. To format the code and ensure linting, use the following:
 
 ```bash
-rye fmt
-rye lint
+uv run ruff check --fix
+uv run ruff format
 ```
 
 Note that your work cannot be merged if these checks fail!

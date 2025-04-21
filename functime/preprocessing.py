@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, List, Literal, Mapping, Optional, Union
+from collections.abc import Mapping
+from typing import Any, Literal
 
 import cloudpickle
 import numpy as np
@@ -91,7 +92,7 @@ def time_to_arange(eager: bool = False):
 
 
 @transformer
-def resample(freq: str, agg_method: str, impute_method: Union[str, int, float]):
+def resample(freq: str, agg_method: str, impute_method: str | int | float):
     """
     Resamples and transforms a DataFrame using the specified frequency, aggregation method, and imputation method.
 
@@ -164,7 +165,7 @@ def trim(direction: Literal["both", "left", "right"] = "both"):
 
 
 @transformer
-def lag(lags: List[int], is_sorted: bool = False):
+def lag(lags: list[int], is_sorted: bool = False):
     """Applies lag transformation to a LazyFrame. The time series is assumed to have no null values.
 
     Parameters
@@ -177,8 +178,9 @@ def lag(lags: List[int], is_sorted: bool = False):
     """
 
     def transform(X: pl.LazyFrame) -> pl.LazyFrame:
-        entity_col = X.columns[0]
-        time_col = X.columns[1]
+        X_columns = X.collect_schema().names()
+        entity_col = X_columns[0]
+        time_col = X_columns[1]
         max_lag = max(lags)
         lagged_series = (
             (
@@ -253,10 +255,10 @@ def one_hot_encode(drop_first: bool = False):
 
 @transformer
 def roll(
-    window_sizes: List[int],
-    stats: List[Literal["mean", "min", "max", "mlm", "sum", "std", "cv"]],
+    window_sizes: list[int],
+    stats: list[Literal["mean", "min", "max", "mlm", "sum", "std", "cv"]],
     freq: str,
-    fill_strategy: Optional[str] = None,
+    fill_strategy: str | None = None,
 ):
     """
     Performs rolling window calculations on specified columns of a DataFrame.
@@ -405,17 +407,18 @@ def scale(use_mean: bool = True, use_std: bool = True, rescale_bool: bool = Fals
         return X
 
     def transform_new(state: ModelState, X: pl.LazyFrame) -> pl.LazyFrame:
-        artifacts = state.artifacts
         idx_cols = X.columns[:2]
-        numeric_cols = state.artifacts["numeric_cols"]
-        _mean = artifacts["_mean"]
-        _std = artifacts["_std"]
+        entity_col = idx_cols[0]
+        artifacts = state.artifacts
+        numeric_cols = artifacts["numeric_cols"]
         if use_mean:
-            X = X.join(_mean, on=idx_cols, how="left").select(
+            _mean = artifacts["_mean"]
+            X = X.join(_mean, on=entity_col, how="left").select(
                 idx_cols + [pl.col(col) - pl.col(f"{col}_mean") for col in numeric_cols]
             )
         if use_std:
-            X = X.join(_std, on=idx_cols, how="left").select(
+            _std = artifacts["_std"]
+            X = X.join(_std, on=entity_col, how="left").select(
                 idx_cols + [pl.col(col) / pl.col(f"{col}_std") for col in numeric_cols]
             )
         if rescale_bool:
@@ -427,10 +430,9 @@ def scale(use_mean: bool = True, use_std: bool = True, rescale_bool: bool = Fals
 
 @transformer
 def impute(
-    method: Union[
-        Literal["mean", "median", "fill", "ffill", "bfill", "interpolate"],
-        Union[int, float],
-    ],
+    method: Literal["mean", "median", "fill", "ffill", "bfill", "interpolate"]
+    | int
+    | float,
 ):
     """
     Performs missing value imputation on numeric columns of a DataFrame grouped by entity.
@@ -487,7 +489,7 @@ def impute(
 
 
 @transformer
-def diff(order: int, sp: int = 1, fill_strategy: Optional[str] = None):
+def diff(order: int, sp: int = 1, fill_strategy: str | None = None):
     """Difference time-series in panel data given order and seasonal period.
 
     Parameters
@@ -602,9 +604,10 @@ def boxcox(method: str = "mle"):
         lmbds = gb.agg(
             PL_NUMERIC_COLS(entity_col, time_col)
             .map_elements(
-                lambda x: boxcox_normmax(x, method=method, optimizer=optimizer)
+                lambda x: boxcox_normmax(x, method=method, optimizer=optimizer),
+                returns_scalar=True,
+                return_dtype=pl.Float64,
             )
-            .cast(pl.Float64())
             .name.suffix("__lmbd")
         )
         # Step 2. Transform
@@ -667,6 +670,7 @@ def yeojohnson(brack: tuple = (-2, 2)):
             PL_NUMERIC_COLS(entity_col, time_col)
             .map_elements(
                 lambda x: yeojohnson_normmax(x.to_numpy(), brack),
+                returns_scalar=True,
                 return_dtype=pl.Float64,
             )
             .name.suffix("__lmbd")
@@ -1036,7 +1040,7 @@ def deseasonalize_fourier(sp: int, K: int, robust: bool = False):
 
 @transformer
 def fractional_diff(
-    d: float, min_weight: Optional[float] = None, window_size: Optional[int] = None
+    d: float, min_weight: float | None = None, window_size: int | None = None
 ):
     """Compute the fractional differential of a time series.
 

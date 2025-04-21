@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, List, Literal, Mapping, Optional, Union
+from collections.abc import Callable, Mapping
+from typing import Any, Literal
 
 import numpy as np
 import polars as pl
@@ -23,23 +24,25 @@ except ImportError:
 
 def fit_recursive(
     regress: Callable[[pl.LazyFrame, pl.LazyFrame], Any],
-    lags: int,
+    lags: int | None,
     y: pl.LazyFrame,
-    X: Optional[pl.LazyFrame] = None,
+    X: pl.LazyFrame | None = None,
 ) -> Mapping[str, Any]:
     # 1. Impose AR structure
-    target_col = y.columns[-1]
+    y_columns = y.collect_schema().names()
+    target_col = y_columns[-1]
     X_y_final = make_reduction(lags=lags, y=y, X=X).lazy()
+    X_y_final_columns = X_y_final.collect_schema().names()
     X_final, y_final = pl.collect_all(
         [
             X_y_final.select(pl.all().exclude(target_col)),
-            X_y_final.select([*X_y_final.columns[:2], target_col]),
+            X_y_final.select([*X_y_final_columns[:2], target_col]),
         ]
     )
     # 2. Fit
     fitted_regressor = regress(X=X_final, y=y_final)
     # 3. Collect artifacts
-    y_lag = make_y_lag(X_y_final, target_col=y.columns[-1], lags=lags)
+    y_lag = make_y_lag(X_y_final, target_col=y_columns[-1], lags=lags if lags else 0)
     artifacts = {
         "regressor": fitted_regressor,
         "y_lag": y_lag.collect(streaming=True),
@@ -52,7 +55,7 @@ def fit_direct(
     lags: int,
     max_horizons: int,
     y: pl.LazyFrame,
-    X: Optional[pl.LazyFrame] = None,
+    X: pl.LazyFrame | None = None,
 ) -> Mapping[str, Any]:
     idx_cols = y.columns[:2]
     target_col = y.columns[-1]
@@ -79,11 +82,11 @@ def fit_direct(
 
 def fit_autoreg(
     regress: Callable[[pl.LazyFrame, pl.LazyFrame], Any],
-    lags: int,
-    y: Union[pl.DataFrame, pl.LazyFrame],
-    X: Optional[Union[pl.DataFrame, pl.LazyFrame]] = None,
-    max_horizons: Optional[int] = None,
-    strategy: Optional[Literal["direct", "recursive", "naive"]] = None,
+    lags: int | None,
+    y: pl.DataFrame | pl.LazyFrame,
+    X: pl.DataFrame | pl.LazyFrame | None = None,
+    max_horizons: int | None = None,
+    strategy: Literal["direct", "recursive", "naive"] | None = None,
 ) -> Mapping[str, Any]:
     y = y.lazy()
     X = X.lazy() if X is not None else X
@@ -111,26 +114,24 @@ def fit_autoreg(
     return artifacts
 
 
-def fit_cv(  # noqa: Ruff too complex
+def fit_cv(
     y: pl.LazyFrame,
     forecaster_cls,
-    freq: Union[str, None],
+    freq: str | None,
     min_lags: int = 3,
     max_lags: int = 12,
-    max_horizons: Optional[int] = None,
-    strategy: Optional[Literal["direct", "recursive", "naive"]] = None,
+    max_horizons: int | None = None,
+    strategy: Literal["direct", "recursive", "naive"] | None = None,
     test_size: int = 1,
     step_size: int = 1,
     n_splits: int = 5,
     time_budget: int = 5,
-    search_space: Optional[Mapping[str, Domain]] = None,
-    points_to_evaluate: Optional[List[Mapping[str, Any]]] = None,
-    low_cost_partial_config: Optional[Mapping[str, Any]] = None,
+    search_space: Mapping[str, Domain] | None = None,
+    points_to_evaluate: list[Mapping[str, Any]] | None = None,
+    low_cost_partial_config: Mapping[str, Any] | None = None,
     num_samples: int = -1,
-    cv: Optional[
-        Callable[[pl.LazyFrame, bool, bool], Union[pl.LazyFrame, pl.DataFrame]]
-    ] = None,
-    X: Optional[pl.LazyFrame] = None,
+    cv: Callable[[pl.LazyFrame, bool, bool], pl.LazyFrame | pl.DataFrame] | None = None,
+    X: pl.LazyFrame | None = None,
     **kwargs,
 ) -> Mapping[str, Any]:
     # TODO: Consolidate logging
@@ -215,7 +216,7 @@ def fit_cv(  # noqa: Ruff too complex
 def predict_recursive(
     state,
     fh: int,
-    X: Optional[pl.DataFrame] = None,
+    X: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     artifacts = state.artifacts
     if "recursive" in artifacts.keys():
@@ -229,10 +230,15 @@ def predict_recursive(
     lag_cols = y_lag.columns[2:]
     lead_col = lag_cols[0]
 
+    Y_LAG_BLUEPRINT = y_lag
+
     def _get_x_y_slice(y_lag: pl.DataFrame, i: int):
-        x_y_slice = y_lag.select(
-            [entity_col, pl.all().exclude(entity_col).list.get(-1)]
-        )
+        if lead_col[-1] == "0":  # checks if there are no lags
+            x_y_slice = Y_LAG_BLUEPRINT
+        else:
+            x_y_slice = y_lag.select(
+                [entity_col, pl.all().exclude(entity_col).list.get(-1)]
+            )
         if X is not None:
             x = X.select([entity_col, pl.all().exclude(entity_col).list.get(i)])
             x_y_slice = x_y_slice.join(x, on=entity_col, how="left")
@@ -273,7 +279,7 @@ def predict_recursive(
 # (values are aggregated into list before being passed into predict)
 
 
-def predict_direct(state, fh: int, X: Optional[pl.DataFrame] = None) -> pl.DataFrame:
+def predict_direct(state, fh: int, X: pl.DataFrame | None = None) -> pl.DataFrame:
     entity_col = state.entity
     time_col = state.time
     target_col = state.target
@@ -336,7 +342,7 @@ def predict_direct(state, fh: int, X: Optional[pl.DataFrame] = None) -> pl.DataF
 def predict_autoreg(
     state,
     fh: int,
-    X: Optional[Union[pl.DataFrame, pl.LazyFrame]] = None,
+    X: pl.DataFrame | pl.LazyFrame | None = None,
 ) -> pl.DataFrame:
     strategy = state.strategy
     time_col = state.time
